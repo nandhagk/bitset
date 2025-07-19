@@ -1,5 +1,5 @@
-#ifndef BITSET_HPP
-#define BITSET_HPP 1
+#ifndef NGK_BITSET_HPP
+#define NGK_BITSET_HPP 1
 
 #include <algorithm>
 #include <array>
@@ -11,6 +11,7 @@
 #include <iterator>
 #include <limits>
 #include <numeric>
+#include <type_traits>
 
 namespace ngk {
 enum class order : std::int8_t { forward, backward };
@@ -18,6 +19,9 @@ enum class order : std::int8_t { forward, backward };
 // CONTRACT: Excess bits will always be zero
 template <std::size_t N, typename WordT, typename ExprT, order Ord>
 class expr {
+    static_assert(N > 0, "size must be positive");
+    static_assert(std::is_unsigned_v<WordT>, "word must be an unsigned integral");
+
 public:
     using word_type = WordT;
     using expr_type = ExprT;
@@ -41,8 +45,6 @@ public:
     [[gnu::always_inline, nodiscard]] static constexpr order ord() {
         return Ord;
     }
-
-    static_assert(size() > 0, "size must be positive");
 
     [[gnu::always_inline, nodiscard]] static constexpr std::size_t whichword(std::size_t pos) {
         return pos / word_size();
@@ -865,16 +867,16 @@ public:
     }
 
     [[gnu::always_inline]] constexpr void set() {
-        if constexpr (!has_excess_bits()) return std::fill(d.begin(), d.end(), static_cast<word_type>(-1));
+        if constexpr (!has_excess_bits()) return std::fill(wbegin(), wend(), static_cast<word_type>(-1));
 
-        auto last = std::prev(d.end());
-        std::fill(d.begin(), last, static_cast<word_type>(-1));
+        auto last = std::prev(wend());
+        std::fill(wbegin(), last, static_cast<word_type>(-1));
 
         *last = mask();
     }
 
     [[gnu::always_inline]] constexpr void unset() {
-        std::fill(d.begin(), d.end(), static_cast<word_type>(0));
+        std::fill(wbegin(), wend(), static_cast<word_type>(0));
     }
 
     [[gnu::always_inline]] constexpr void flip() {
@@ -916,4 +918,4 @@ constexpr void swap(ngk::bitset<N, WordT> &a, ngk::bitset<N, WordT> &b) noexcept
 }
 } // namespace std
 
-#endif // BITSET_HPP
+#endif // NGK_BITSET_HPP
