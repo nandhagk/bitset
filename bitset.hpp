@@ -211,8 +211,7 @@ public:
     }
 
     [[gnu::always_inline, nodiscard]] constexpr usize count() const {
-        return std::transform_reduce(cwbegin(), cwend(), 0, std::plus<usize>{},
-                                     [](word_type w) { return std::popcount(w); });
+        return std::transform_reduce(cwbegin(), cwend(), 0, std::plus<usize>{}, [](word_type w) { return popcnt(w); });
     }
 
     [[gnu::always_inline, nodiscard]] constexpr bool all() const {
