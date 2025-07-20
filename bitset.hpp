@@ -11,30 +11,74 @@
 #include <iterator>
 #include <limits>
 #include <numeric>
-#include <type_traits>
 
 namespace ngk {
-enum class order : std::int8_t { forward, backward };
+
+using u8 = std::uint8_t;
+using u16 = std::uint16_t;
+using u32 = std::uint32_t;
+using u64 = std::uint64_t;
+using u128 = unsigned __int128;
+
+using usize = std::size_t;
+using isize = std::ptrdiff_t;
+
+[[gnu::always_inline, nodiscard]] inline constexpr usize popcnt(u32 x) {
+    return __builtin_popcount(x);
+}
+
+[[gnu::always_inline, nodiscard]] inline constexpr usize popcnt(u64 x) {
+    return __builtin_popcountll(x);
+}
+
+[[gnu::always_inline, nodiscard]] inline constexpr usize popcnt(u128 x) {
+    return popcnt(static_cast<u64>(x)) + popcnt(static_cast<u64>(x >> 64));
+}
+
+[[gnu::always_inline, nodiscard]] inline constexpr usize topbit(u32 x) {
+    return 31 - __builtin_clz(x);
+}
+
+[[gnu::always_inline, nodiscard]] inline constexpr usize topbit(u64 x) {
+    return 63 - __builtin_clzll(x);
+}
+
+[[gnu::always_inline, nodiscard]] inline constexpr usize topbit(u128 x) {
+    return static_cast<u64>(x >> 64) ? (topbit(static_cast<u64>(x >> 64)) + 64) : topbit(static_cast<u64>(x));
+}
+
+[[gnu::always_inline, nodiscard]] inline constexpr usize lowbit(u32 x) {
+    return __builtin_ctz(x);
+}
+
+[[gnu::always_inline, nodiscard]] inline constexpr usize lowbit(u64 x) {
+    return __builtin_ctzll(x);
+}
+
+[[gnu::always_inline, nodiscard]] inline constexpr usize lowbit(u128 x) {
+    return static_cast<u64>(x) ? lowbit(static_cast<u64>(x)) : (lowbit(static_cast<u64>(x >> 64)) + 64);
+}
+
+enum class order : u8 { forward, backward };
 
 // CONTRACT: Excess bits will always be zero
-template <std::size_t N, typename WordT, typename ExprT, order Ord>
+template <usize N, typename WordT, typename ExprT, order Ord>
 class expr {
     static_assert(N > 0, "size must be positive");
-    static_assert(std::is_unsigned_v<WordT>, "word must be an unsigned integral");
 
 public:
     using word_type = WordT;
     using expr_type = ExprT;
 
-    [[gnu::always_inline, nodiscard]] static constexpr std::size_t size() {
+    [[gnu::always_inline, nodiscard]] static constexpr usize size() {
         return N;
     }
 
-    [[gnu::always_inline, nodiscard]] static constexpr std::size_t word_size() {
+    [[gnu::always_inline, nodiscard]] static constexpr usize word_size() {
         return std::numeric_limits<word_type>::digits;
     }
 
-    [[gnu::always_inline, nodiscard]] static constexpr std::size_t word_count() {
+    [[gnu::always_inline, nodiscard]] static constexpr usize word_count() {
         return (size() + word_size() - 1) / word_size();
     }
 
@@ -46,15 +90,15 @@ public:
         return Ord;
     }
 
-    [[gnu::always_inline, nodiscard]] static constexpr std::size_t whichword(std::size_t pos) {
+    [[gnu::always_inline, nodiscard]] static constexpr usize whichword(usize pos) {
         return pos / word_size();
     }
 
-    [[gnu::always_inline, nodiscard]] static constexpr std::size_t whichbit(std::size_t pos) {
+    [[gnu::always_inline, nodiscard]] static constexpr usize whichbit(usize pos) {
         return pos % word_size();
     }
 
-    [[gnu::always_inline, nodiscard]] static constexpr word_type maskbit(std::size_t pos) {
+    [[gnu::always_inline, nodiscard]] static constexpr word_type maskbit(usize pos) {
         return static_cast<word_type>(1) << whichbit(pos);
     }
 
@@ -67,7 +111,7 @@ public:
         return *static_cast<const expr_type *>(this);
     }
 
-    [[gnu::always_inline, nodiscard]] constexpr word_type word(std::size_t wpos) const {
+    [[gnu::always_inline, nodiscard]] constexpr word_type word(usize wpos) const {
         return self().word(wpos);
     }
 
@@ -75,7 +119,7 @@ public:
     public:
         using self_type = const_word_iterator;
 
-        using difference_type = std::ptrdiff_t;
+        using difference_type = isize;
         using value_type = word_type;
         using reference = void;
         using iterator_category = std::random_access_iterator_tag;
@@ -139,11 +183,11 @@ public:
         }
 
     private:
-        const_word_iterator(const expr *const e_ptr, std::size_t p)
+        const_word_iterator(const expr *const e_ptr, usize p)
             : expr_ptr(e_ptr), wpos(p) {}
 
         const expr *const expr_ptr;
-        std::size_t wpos;
+        usize wpos;
 
         friend class expr;
     };
@@ -166,8 +210,8 @@ public:
         return const_reverse_word_iterator(cwbegin());
     }
 
-    [[gnu::always_inline, nodiscard]] constexpr std::size_t count() const {
-        return std::transform_reduce(cwbegin(), cwend(), 0, std::plus<std::size_t>{},
+    [[gnu::always_inline, nodiscard]] constexpr usize count() const {
+        return std::transform_reduce(cwbegin(), cwend(), 0, std::plus<usize>{},
                                      [](word_type w) { return std::popcount(w); });
     }
 
@@ -196,7 +240,7 @@ public:
         return rhs.is_subset_of(*this);
     }
 
-    [[gnu::always_inline, nodiscard]] constexpr bool operator[](std::size_t pos) const {
+    [[gnu::always_inline, nodiscard]] constexpr bool operator[](usize pos) const {
         return (word(whichword(pos)) >> (whichbit(pos))) & 1;
     }
 
@@ -204,7 +248,7 @@ public:
     public:
         using self_type = const_iterator;
 
-        using difference_type = std::ptrdiff_t;
+        using difference_type = isize;
         using value_type = bool;
         using reference = void;
         using iterator_category = std::random_access_iterator_tag;
@@ -268,11 +312,11 @@ public:
         }
 
     private:
-        const_iterator(const expr *const e_ptr, std::size_t p)
+        const_iterator(const expr *const e_ptr, usize p)
             : expr_ptr(e_ptr), pos(p) {}
 
         const expr *const expr_ptr;
-        std::size_t pos;
+        usize pos;
 
         friend class expr;
     };
@@ -295,42 +339,42 @@ public:
         return const_reverse_iterator(cbegin());
     }
 
-    [[gnu::always_inline, nodiscard]] constexpr std::size_t find_first() const {
-        for (std::size_t wpos = 0; wpos < word_count(); ++wpos)
+    [[gnu::always_inline, nodiscard]] constexpr usize find_first() const {
+        for (usize wpos = 0; wpos < word_count(); ++wpos)
             if (const word_type w = word(wpos); w != 0) return lowbit(w) + wpos * word_size();
 
         return size();
     }
 
-    [[gnu::always_inline, nodiscard]] constexpr std::size_t find_next(std::size_t prev) const {
-        const std::size_t prev_word = whichword(prev);
+    [[gnu::always_inline, nodiscard]] constexpr usize find_next(usize prev) const {
+        const usize prev_word = whichword(prev);
 
         const word_type prev_mask = maskbit(whichbit(prev));
         if (const word_type w = word(prev_word) & ~prev_mask & ~(prev_mask - 1); w != 0)
             return lowbit(w) + prev_word * word_size();
 
-        for (std::size_t wpos = prev_word + 1; wpos < word_count(); ++wpos)
+        for (usize wpos = prev_word + 1; wpos < word_count(); ++wpos)
             if (const word_type w = word(wpos); w != 0) return lowbit(w) + wpos * word_size();
 
         return size();
     }
 
-    [[gnu::always_inline, nodiscard]] constexpr std::size_t find_last() const {
-        for (std::size_t wpos = word_count(); wpos-- > 0;)
+    [[gnu::always_inline, nodiscard]] constexpr usize find_last() const {
+        for (usize wpos = word_count(); wpos-- > 0;)
             if (const word_type w = word(wpos); w != 0) return topbit(w) + wpos * word_size();
 
         return -1;
     }
 
-    [[gnu::always_inline, nodiscard]] constexpr std::size_t find_prev(std::size_t prev) const {
+    [[gnu::always_inline, nodiscard]] constexpr usize find_prev(usize prev) const {
         if (prev == size()) return find_last();
 
-        const std::size_t prev_word = whichword(prev);
+        const usize prev_word = whichword(prev);
 
         const word_type prev_mask = maskbit(whichbit(prev));
         if (const word_type w = word(prev_word) & (prev_mask - 1); w != 0) return topbit(w) + prev_word * word_size();
 
-        for (std::size_t wpos = prev_word; wpos-- > 0;)
+        for (usize wpos = prev_word; wpos-- > 0;)
             if (const word_type w = word(wpos); w != 0) return topbit(w) + wpos * word_size();
 
         return -1;
@@ -340,8 +384,8 @@ public:
     public:
         using self_type = const_ones_iterator;
 
-        using difference_type = std::ptrdiff_t;
-        using value_type = std::size_t;
+        using difference_type = isize;
+        using value_type = usize;
         using reference = void;
         using iterator_category = std::bidirectional_iterator_tag;
 
@@ -377,11 +421,11 @@ public:
         }
 
     private:
-        const_ones_iterator(const expr *const e_ptr, std::size_t p)
+        const_ones_iterator(const expr *const e_ptr, usize p)
             : expr_ptr(e_ptr), pos(p) {}
 
         const expr *const expr_ptr;
-        std::size_t pos;
+        usize pos;
 
         friend class expr;
     };
@@ -405,19 +449,19 @@ public:
     }
 };
 
-template <std::size_t N, typename WordT, typename LExprT, typename RExprT, order LOrd, order ROrd>
+template <usize N, typename WordT, typename LExprT, typename RExprT, order LOrd, order ROrd>
 [[gnu::always_inline, nodiscard]] constexpr bool operator==(const expr<N, WordT, LExprT, LOrd> &lhs,
                                                             const expr<N, WordT, RExprT, ROrd> &rhs) {
     return std::equal(lhs.cwbegin(), lhs.cwend(), rhs.cwbegin());
 }
 
-template <std::size_t N, typename WordT, typename LExprT, typename RExprT, order LOrd, order ROrd>
+template <usize N, typename WordT, typename LExprT, typename RExprT, order LOrd, order ROrd>
 [[gnu::always_inline, nodiscard]] constexpr bool operator<(const expr<N, WordT, LExprT, LOrd> &lhs,
                                                            const expr<N, WordT, RExprT, ROrd> &rhs) {
     return std::lexicographical_compare(lhs.cwbegin(), lhs.cwend(), rhs.cwbegin(), rhs.cwend());
 }
 
-template <std::size_t N, typename WordT, typename LExprT, typename RExprT, typename Op>
+template <usize N, typename WordT, typename LExprT, typename RExprT, typename Op>
 class binary_expr : public expr<N, WordT, binary_expr<N, WordT, LExprT, RExprT, Op>, RExprT::ord()> {
     using base_type = expr<N, WordT, binary_expr<N, WordT, LExprT, RExprT, Op>, RExprT::ord()>;
     using word_type = typename base_type::word_type;
@@ -430,12 +474,12 @@ public:
     constexpr binary_expr(const LExprT &l, const RExprT &r)
         : lhs(l), rhs(r) {}
 
-    [[gnu::always_inline, nodiscard]] constexpr word_type word(std::size_t wpos) const {
+    [[gnu::always_inline, nodiscard]] constexpr word_type word(usize wpos) const {
         return op(lhs.word(wpos), rhs.word(wpos));
     }
 };
 
-template <std::size_t N, typename WordT, typename ExprT>
+template <usize N, typename WordT, typename ExprT>
 class not_expr : public expr<N, WordT, not_expr<N, WordT, ExprT>, ExprT::ord()> {
     using base_type = expr<N, WordT, not_expr<N, WordT, ExprT>, ExprT::ord()>;
     using word_type = typename base_type::word_type;
@@ -452,7 +496,7 @@ public:
     constexpr not_expr(const ExprT &e)
         : lhs(e) {}
 
-    [[gnu::always_inline, nodiscard]] constexpr word_type word(std::size_t wpos) const {
+    [[gnu::always_inline, nodiscard]] constexpr word_type word(usize wpos) const {
         const word_type w = ~lhs.word(wpos);
 
         if constexpr (!has_excess_bits()) return w;
@@ -460,7 +504,7 @@ public:
     }
 };
 
-template <std::size_t N, typename WordT, typename ExprT>
+template <usize N, typename WordT, typename ExprT>
 class shl_expr : public expr<N, WordT, shl_expr<N, WordT, ExprT>, order::backward> {
     using base_type = expr<N, WordT, shl_expr<N, WordT, ExprT>, order::backward>;
     using word_type = typename base_type::word_type;
@@ -472,9 +516,9 @@ class shl_expr : public expr<N, WordT, shl_expr<N, WordT, ExprT>, order::backwar
     using base_type::word_size;
 
     const ExprT &lhs;
-    const std::size_t wshift, offset, sub_offset;
+    const usize wshift, offset, sub_offset;
 
-    [[gnu::always_inline, nodiscard]] constexpr word_type unmasked_word(std::size_t wpos) const {
+    [[gnu::always_inline, nodiscard]] constexpr word_type unmasked_word(usize wpos) const {
         if (offset == 0) return lhs.word(wpos - wshift);
 
         if (wpos == wshift) return lhs.word(0) << offset;
@@ -482,10 +526,10 @@ class shl_expr : public expr<N, WordT, shl_expr<N, WordT, ExprT>, order::backwar
     }
 
 public:
-    constexpr shl_expr(const ExprT &e, std::size_t shift)
+    constexpr shl_expr(const ExprT &e, usize shift)
         : lhs(e), wshift(shift / word_size()), offset(shift % word_size()), sub_offset(word_size() - offset) {}
 
-    [[gnu::always_inline, nodiscard]] constexpr word_type word(std::size_t wpos) const {
+    [[gnu::always_inline, nodiscard]] constexpr word_type word(usize wpos) const {
         if (wpos < wshift) return 0;
 
         const word_type w = unmasked_word(wpos);
@@ -495,7 +539,7 @@ public:
     }
 };
 
-template <std::size_t N, typename WordT, typename ExprT>
+template <usize N, typename WordT, typename ExprT>
 struct shr_expr : public expr<N, WordT, shr_expr<N, WordT, ExprT>, order::forward> {
     using base_type = expr<N, WordT, shr_expr<N, WordT, ExprT>, order::forward>;
     using word_type = typename base_type::word_type;
@@ -504,17 +548,17 @@ struct shr_expr : public expr<N, WordT, shr_expr<N, WordT, ExprT>, order::forwar
     using base_type::word_size;
 
     const ExprT &lhs;
-    const std::size_t wshift, offset, sub_offset, limit;
+    const usize wshift, offset, sub_offset, limit;
 
 public:
-    constexpr shr_expr(const ExprT &e, std::size_t shift)
+    constexpr shr_expr(const ExprT &e, usize shift)
         : lhs(e),
           wshift(shift / word_size()),
           offset(shift % word_size()),
           sub_offset(word_size() - offset),
           limit(word_count() - wshift - 1) {}
 
-    [[gnu::always_inline, nodiscard]] constexpr word_type word(std::size_t wpos) const {
+    [[gnu::always_inline, nodiscard]] constexpr word_type word(usize wpos) const {
         if (wpos > limit) return 0;
         if (offset == 0) return lhs.word(wpos + wshift);
 
@@ -523,46 +567,46 @@ public:
     }
 };
 
-template <std::size_t N, typename WordT, typename LExprT, typename RExprT, order LOrd, order ROrd>
+template <usize N, typename WordT, typename LExprT, typename RExprT, order LOrd, order ROrd>
 [[gnu::always_inline, nodiscard]] constexpr auto operator|(const expr<N, WordT, LExprT, LOrd> &lhs,
                                                            const expr<N, WordT, RExprT, ROrd> &rhs) {
     return binary_expr<N, WordT, LExprT, RExprT, std::bit_or<WordT>>(lhs.self(), rhs.self());
 }
 
-template <std::size_t N, typename WordT, typename LExprT, typename RExprT, order LOrd, order ROrd>
+template <usize N, typename WordT, typename LExprT, typename RExprT, order LOrd, order ROrd>
 [[gnu::always_inline, nodiscard]] constexpr auto operator&(const expr<N, WordT, LExprT, LOrd> &lhs,
                                                            const expr<N, WordT, RExprT, ROrd> &rhs) {
     return binary_expr<N, WordT, LExprT, RExprT, std::bit_and<WordT>>(lhs.self(), rhs.self());
 }
 
-template <std::size_t N, typename WordT, typename LExprT, typename RExprT, order LOrd, order ROrd>
+template <usize N, typename WordT, typename LExprT, typename RExprT, order LOrd, order ROrd>
 [[gnu::always_inline, nodiscard]] constexpr auto operator^(const expr<N, WordT, LExprT, LOrd> &lhs,
                                                            const expr<N, WordT, RExprT, ROrd> &rhs) {
     return binary_expr<N, WordT, LExprT, RExprT, std::bit_xor<WordT>>(lhs.self(), rhs.self());
 }
 
-template <std::size_t N, typename WordT, typename ExprT, order Ord>
+template <usize N, typename WordT, typename ExprT, order Ord>
 [[gnu::always_inline, nodiscard]] constexpr auto operator~(const expr<N, WordT, ExprT, Ord> &lhs) {
     return not_expr<N, WordT, ExprT>(lhs.self());
 }
 
-template <std::size_t N, typename WordT, typename LExprT, typename RExprT, order LOrd, order ROrd>
+template <usize N, typename WordT, typename LExprT, typename RExprT, order LOrd, order ROrd>
 [[gnu::always_inline, nodiscard]] constexpr auto operator-(const expr<N, WordT, LExprT, LOrd> &lhs,
                                                            const expr<N, WordT, RExprT, ROrd> &rhs) {
     return lhs & ~rhs;
 }
 
-template <std::size_t N, typename WordT, typename ExprT, order Ord>
-[[gnu::always_inline, nodiscard]] constexpr auto operator<<(const expr<N, WordT, ExprT, Ord> &lhs, std::size_t shift) {
+template <usize N, typename WordT, typename ExprT, order Ord>
+[[gnu::always_inline, nodiscard]] constexpr auto operator<<(const expr<N, WordT, ExprT, Ord> &lhs, usize shift) {
     return shl_expr<N, WordT, ExprT>(lhs.self(), shift);
 }
 
-template <std::size_t N, typename WordT, typename ExprT, order Ord>
-[[gnu::always_inline, nodiscard]] constexpr auto operator>>(const expr<N, WordT, ExprT, Ord> &lhs, std::size_t shift) {
+template <usize N, typename WordT, typename ExprT, order Ord>
+[[gnu::always_inline, nodiscard]] constexpr auto operator>>(const expr<N, WordT, ExprT, Ord> &lhs, usize shift) {
     return shr_expr<N, WordT, ExprT>(lhs.self(), shift);
 }
 
-template <std::size_t N, typename WordT = std::uint64_t>
+template <usize N, typename WordT = std::uint64_t>
 class bitset : public expr<N, WordT, bitset<N, WordT>, order::forward> {
     using base_type = expr<N, WordT, bitset<N, WordT>, order::forward>;
     using word_type = typename base_type::word_type;
@@ -592,8 +636,8 @@ class bitset : public expr<N, WordT, bitset<N, WordT>, order::forward> {
     template <typename CharT, typename Traits>
     [[gnu::always_inline]] constexpr void from_string(std::basic_string_view<CharT, Traits> str,
                                                       CharT zero = CharT('0'), CharT one = CharT('1')) {
-        const std::size_t n = std::min(size(), str.size());
-        for (std::size_t i = 0, j = n; i < n; ++i) {
+        const usize n = std::min(size(), str.size());
+        for (usize i = 0, j = n; i < n; ++i) {
             const CharT c = str[--j];
 
             // Really slow to check!!
@@ -640,22 +684,22 @@ public:
         }
 
     private:
-        constexpr reference(word_type *w_ptr, std::size_t p)
+        constexpr reference(word_type *w_ptr, usize p)
             : word_ptr(w_ptr), pos(p) {}
 
-        [[gnu::always_inline, nodiscard]] static constexpr word_type maskbit(std::size_t pos) {
+        [[gnu::always_inline, nodiscard]] static constexpr word_type maskbit(usize pos) {
             return static_cast<word_type>(1) << pos;
         }
 
         word_type *const word_ptr;
-        const std::size_t pos;
+        const usize pos;
 
         friend class bitset;
     };
 
     using base_type::operator[];
 
-    [[gnu::always_inline, nodiscard]] constexpr reference operator[](std::size_t pos) {
+    [[gnu::always_inline, nodiscard]] constexpr reference operator[](usize pos) {
         return reference(&d[whichword(pos)], whichbit(pos));
     }
 
@@ -663,7 +707,7 @@ public:
     public:
         using self_type = iterator;
 
-        using difference_type = std::ptrdiff_t;
+        using difference_type = isize;
         using value_type = bitset<N, WordT>::reference;
         using reference = void;
         using iterator_category = std::random_access_iterator_tag;
@@ -727,11 +771,11 @@ public:
         }
 
     private:
-        iterator(bitset *const b_ptr, std::size_t p)
+        iterator(bitset *const b_ptr, usize p)
             : bitset_ptr(b_ptr), pos(p) {}
 
         bitset *const bitset_ptr;
-        std::size_t pos;
+        usize pos;
 
         friend class bitset;
     };
@@ -837,32 +881,32 @@ public:
         return *this = ~(*this);
     }
 
-    [[gnu::always_inline]] constexpr bitset &operator<<=(std::size_t shift) & {
+    [[gnu::always_inline]] constexpr bitset &operator<<=(usize shift) & {
         return *this = *this << shift;
     }
 
-    [[gnu::always_inline]] constexpr bitset &operator>>=(std::size_t shift) & {
+    [[gnu::always_inline]] constexpr bitset &operator>>=(usize shift) & {
         return *this = *this >> shift;
     }
 
-    [[gnu::always_inline, nodiscard]] constexpr word_type word(std::size_t wpos) const {
+    [[gnu::always_inline, nodiscard]] constexpr word_type word(usize wpos) const {
         return d[wpos];
     }
 
     // WARNING: Assumes that bitset is zeroed beforehand
-    [[gnu::always_inline]] constexpr void set(std::size_t pos, bool val) {
+    [[gnu::always_inline]] constexpr void set(usize pos, bool val) {
         d[whichword(pos)] |= static_cast<word_type>(val) << whichbit(pos);
     }
 
-    [[gnu::always_inline]] constexpr void set(std::size_t pos) {
+    [[gnu::always_inline]] constexpr void set(usize pos) {
         d[whichword(pos)] |= maskbit(pos);
     }
 
-    [[gnu::always_inline]] constexpr void unset(std::size_t pos) {
+    [[gnu::always_inline]] constexpr void unset(usize pos) {
         d[whichword(pos)] &= ~maskbit(pos);
     }
 
-    [[gnu::always_inline]] constexpr void flip(std::size_t pos) {
+    [[gnu::always_inline]] constexpr void flip(usize pos) {
         d[whichword(pos)] ^= maskbit(pos);
     }
 
@@ -888,7 +932,7 @@ public:
     [[gnu::always_inline, nodiscard]] std::basic_string<CharT, Traits, Allocator>
     to_string(CharT zero = CharT('0'), CharT one = CharT('1')) const {
         std::basic_string<CharT, Traits, Allocator> s(size(), 0);
-        for (std::size_t i = 0, j = size(); i < size(); ++i) s[--j] = operator[](i) ? one : zero;
+        for (usize i = 0, j = size(); i < size(); ++i) s[--j] = operator[](i) ? one : zero;
 
         return s;
     }
@@ -912,7 +956,7 @@ public:
 } // namespace ngk
 
 namespace std {
-template <std::size_t N, typename WordT>
+template <ngk::usize N, typename WordT>
 constexpr void swap(ngk::bitset<N, WordT> &a, ngk::bitset<N, WordT> &b) noexcept {
     a.swap(b);
 }
